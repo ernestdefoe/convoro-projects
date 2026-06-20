@@ -1,54 +1,152 @@
 // Convoro extension: Projects (forum surface).
-// Shipped prebuilt — no build step. Shows the latest member projects in the
-// sidebar with a link to the full /projects page. Uses live theme tokens.
+// Shipped prebuilt — no build step. Two widgets using live theme tokens (--c-*):
+//   • profile:below  → a member's "Projects" showcase (featured first)
+//   • forum:sidebar  → a compact "Latest projects" card
+// Both fetch public JSON endpoints; nothing renders until data arrives.
 
 const c = window.Convoro;
 
+function el(tag, css, text) {
+  const n = document.createElement(tag);
+  if (css) n.style.cssText = css;
+  if (text != null) n.textContent = text;
+  return n;
+}
+
+const TOK = {
+  surface: 'rgb(var(--c-surface,255 255 255))',
+  surface2: 'rgb(var(--c-surface-2,245 246 250))',
+  border: 'rgb(var(--c-border,230 232 240))',
+  text: 'rgb(var(--c-text,27 32 48))',
+  text2: 'rgb(var(--c-text-2,74 81 104))',
+  muted: 'rgb(var(--c-muted,138 144 166))',
+  primary: 'rgb(var(--c-primary,91 91 214))',
+};
+
+function cardShell() {
+  return el('div', [
+    'overflow:hidden', 'border-radius:var(--c-radius,12px)',
+    'border:1px solid ' + TOK.border, 'background:' + TOK.surface,
+    'box-shadow:0 1px 2px rgba(0,0,0,.04)', 'margin-bottom:16px',
+  ].join(';'));
+}
+
+function sectionHead(icon, label) {
+  const head = el('div', 'display:flex;align-items:center;gap:8px;padding:12px 16px;background:rgb(var(--c-primary,91 91 214) / .10);border-bottom:1px solid ' + TOK.border);
+  head.appendChild(el('span', null, icon));
+  const b = el('b', 'font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:rgb(var(--c-primary-700,66 66 181))', label);
+  head.appendChild(b);
+  return head;
+}
+
+// A single project row (used in both widgets).
+function projectRow(p, opts) {
+  opts = opts || {};
+  const row = el('a', [
+    'display:flex', 'gap:10px', 'align-items:center', 'padding:10px 16px',
+    'text-decoration:none', 'border-bottom:1px solid ' + TOK.border,
+  ].join(';'));
+  row.href = '/projects/' + p.slug;
+
+  if (p.image) {
+    const thumb = el('div', 'width:46px;height:46px;border-radius:9px;flex-shrink:0;background-size:cover;background-position:center;background-color:' + TOK.surface2);
+    thumb.style.backgroundImage = "url('" + p.image + "')";
+    row.appendChild(thumb);
+  } else {
+    const thumb = el('div', 'width:46px;height:46px;border-radius:9px;flex-shrink:0;display:grid;place-items:center;font-size:20px;background:' + TOK.surface2, '📦');
+    row.appendChild(thumb);
+  }
+
+  const body = el('div', 'min-width:0;flex:1');
+  const titleRow = el('div', 'display:flex;align-items:center;gap:6px;min-width:0');
+  if (opts.featured) {
+    titleRow.appendChild(el('span', 'color:#f5a623;flex-shrink:0', '★'));
+  }
+  const title = el('div', 'font-weight:700;color:' + TOK.text + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis', p.title);
+  titleRow.appendChild(title);
+  body.appendChild(titleRow);
+
+  const metaBits = [];
+  if (p.category && p.category.name) metaBits.push((p.category.icon ? p.category.icon + ' ' : '') + p.category.name);
+  if (typeof p.likesCount === 'number' && p.likesCount > 0) metaBits.push('♥ ' + p.likesCount);
+  if (metaBits.length) {
+    body.appendChild(el('div', 'font-size:12px;color:' + TOK.muted + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis', metaBits.join(' · ')));
+  }
+  row.appendChild(body);
+  return row;
+}
+
+function stripLastBorder(container) {
+  const rows = container.querySelectorAll('a');
+  if (rows.length) rows[rows.length - 1].style.borderBottom = '0';
+}
+
+// ---- profile:below — the member's project showcase ----
+function mountProfile(host, ctx) {
+  const userId = ctx && ctx.props && ctx.props.userId;
+  let req;
+  if (userId) {
+    req = fetch('/api/ext/projects/user/' + userId + '/projects', { headers: { Accept: 'application/json' } });
+  } else {
+    // Fallback: derive the username from the profile URL (/u/<name> or /user/<name>).
+    const m = location.pathname.match(/\/(?:u|user|users)\/([^/]+)/i);
+    if (!m) return;
+    req = fetch('/api/ext/projects/user/by-name/' + encodeURIComponent(decodeURIComponent(m[1])), { headers: { Accept: 'application/json' } });
+  }
+  req.then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d && d.projects && d.projects.length) renderProfile(host, d.projects); })
+    .catch(() => { /* silent */ });
+}
+
+function renderProfile(host, projects) {
+  const card = cardShell();
+  card.style.marginTop = '20px';
+  card.appendChild(sectionHead('📦', c.t('Projects')));
+  const list = el('div', null);
+  projects.forEach((p) => list.appendChild(projectRow(p, { featured: p.featured })));
+  stripLastBorder(list);
+  card.appendChild(list);
+
+  const foot = el('a', 'display:block;padding:10px 16px;text-align:center;font-size:13px;font-weight:600;text-decoration:none;color:' + TOK.primary, c.t('Browse all projects'));
+  foot.href = '/projects';
+  card.appendChild(foot);
+  host.appendChild(card);
+}
+
+// ---- forum:sidebar — latest projects ----
+function mountSidebar(host) {
+  fetch('/api/ext/projects/recent', { headers: { Accept: 'application/json' } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d && d.projects && d.projects.length) renderSidebar(host, d.projects); })
+    .catch(() => { /* silent */ });
+}
+
+function renderSidebar(host, projects) {
+  const card = cardShell();
+  card.appendChild(sectionHead('📦', c.t('Latest projects')));
+  const list = el('div', null);
+  projects.forEach((p) => list.appendChild(projectRow(p)));
+  stripLastBorder(list);
+  card.appendChild(list);
+
+  const foot = el('a', 'display:block;padding:10px 16px;text-align:center;font-size:13px;font-weight:600;text-decoration:none;color:' + TOK.primary, c.t('See all'));
+  foot.href = '/projects';
+  card.appendChild(foot);
+  host.appendChild(card);
+}
+
 if (c && typeof c.registerSlot === 'function') {
+  c.registerSlot('profile:below', {
+    ext: 'convoro-projects',
+    label: 'Member projects',
+    order: 10,
+    mount(elm, ctx) { mountProfile(elm, ctx); },
+  });
+
   c.registerSlot('forum:sidebar', {
     ext: 'convoro-projects',
+    label: 'Latest projects',
     order: -10,
-    mount(el) {
-      fetch('/api/ext/projects/latest', { headers: { Accept: 'application/json' } })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => { if (d && d.projects && d.projects.length) render(el, d.projects); })
-        .catch(() => { /* silent */ });
-    },
+    mount(elm) { mountSidebar(elm); },
   });
-}
-
-function render(el, projects) {
-  const card = document.createElement('div');
-  card.style.cssText = [
-    'overflow:hidden', 'border-radius:var(--c-radius,12px)',
-    'border:1px solid rgb(var(--c-border,230 232 240))',
-    'background:rgb(var(--c-surface,255 255 255))', 'margin-bottom:16px',
-  ].join(';');
-
-  const head = document.createElement('a');
-  head.href = '/projects';
-  head.style.cssText = 'display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid rgb(var(--c-border,230 232 240));text-decoration:none;color:rgb(var(--c-text,27 32 48))';
-  head.innerHTML = '<span>🚀</span><b style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;flex:1">Projects</b><span style="font-size:12px;color:rgb(var(--c-primary,91 91 214))">All →</span>';
-  card.appendChild(head);
-
-  projects.forEach((p) => {
-    const row = document.createElement('a');
-    row.href = '/projects';
-    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 16px;text-decoration:none;color:rgb(var(--c-text-2,74 81 104));border-bottom:1px solid rgb(var(--c-border,230 232 240) / .5)';
-    const thumb = document.createElement('span');
-    thumb.style.cssText = 'width:34px;height:34px;flex:none;border-radius:8px;background:rgb(var(--c-surface-2,248 249 252)) center/cover;display:flex;align-items:center;justify-content:center;font-size:15px';
-    if (p.image) thumb.style.backgroundImage = `url('${p.image}')`; else thumb.textContent = '🚀';
-    const txt = document.createElement('span');
-    txt.style.cssText = 'min-width:0;font-size:13px';
-    txt.innerHTML = `<span style="display:block;font-weight:700;color:rgb(var(--c-text,27 32 48));white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.title)}</span><span style="color:rgb(var(--c-muted,138 144 166))">by ${escapeHtml(p.author)}</span>`;
-    row.appendChild(thumb);
-    row.appendChild(txt);
-    card.appendChild(row);
-  });
-
-  el.appendChild(card);
-}
-
-function escapeHtml(s) {
-  return String(s || '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 }

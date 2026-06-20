@@ -1,15 +1,26 @@
 {
   "id": "convoro-projects",
   "name": "Projects",
-  "version": "1.0.0",
-  "description": "A showcase where members publish their projects — title, link, image and description — shown as cards on a /projects page, with a latest-projects sidebar widget and admin moderation.",
+  "version": "1.1.0",
+  "description": "A user-project showcase for Convoro — members publish projects (title, cover image, description, typed custom fields and link buttons) as cards on a /projects page, filterable by category. Each project has a detail page with likes, authors can feature their best work on their profile, and staff moderate submissions while defining the categories, custom fields and button slots. Ships a profile showcase widget and a latest-projects sidebar card. Free first-party extension.",
   "author": "Convoro",
-  "convoro": ">=0.1.0",
+  "convoro": ">=1.39.6",
+  "type": "extension",
   "namespace": "Convoro\\Ext\\Projects\\",
   "provider": "Convoro\\Ext\\Projects\\Extension",
   "migrations": "migrations",
+  "permissions": [
+    { "key": "projects.create", "label": "Create projects", "category": "Projects", "baseline": true },
+    { "key": "projects.skipModeration", "label": "Publish projects without moderation", "category": "Projects", "baseline": false },
+    { "key": "projects.moderate", "label": "Moderate projects & manage categories/fields/buttons", "category": "Projects", "baseline": false }
+  ],
+  "settings": [
+    { "key": "free_links", "label": "Allow ad-hoc links", "type": "boolean", "default": false, "help": "Let members add their own links on a project beyond the admin-configured button slots." }
+  ],
+  "nav": { "label": "Projects", "href": "/projects", "auth": false },
   "admin_url": "/admin/ext/projects",
   "assets": { "forum": "assets/forum.js" },
+  "icon": "icon.svg",
   "premium": false,
   "price": 0
 }
